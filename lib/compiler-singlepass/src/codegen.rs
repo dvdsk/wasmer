@@ -3879,7 +3879,7 @@ impl<'a, M: Machine> FuncGen<'a, M> {
                     .map_err(|e| CodegenError {
                         message: format!("BrTable read_table: {:?}", e),
                     })?;
-                let default_target = targets.pop().unwrap().0;
+                let default_target = targets.pop().unwrap();
                 let cond = self.pop_value_released();
                 let table_label = self.machine.get_label();
                 let mut table: Vec<Label> = vec![];
@@ -3893,7 +3893,7 @@ impl<'a, M: Machine> FuncGen<'a, M> {
 
                 self.machine.emit_jmp_to_jumptable(table_label, cond);
 
-                for (target, _) in targets.iter() {
+                for target in targets.iter() {
                     let label = self.machine.get_label();
                     self.machine.emit_label(label);
                     table.push(label);

@@ -496,9 +496,9 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         Operator::BrIf { relative_depth } => translate_br_if(*relative_depth, builder, state),
         Operator::BrTable { table } => {
             let mut depths = table.targets().collect::<Result<Vec<_>, _>>()?;
-            let default = depths.pop().unwrap().0;
+            let default = depths.pop().unwrap();
             let mut min_depth = default;
-            for (depth, _) in depths.iter() {
+            for depth in depths.iter() {
                 if *depth < min_depth {
                     min_depth = *depth;
                 }
@@ -516,7 +516,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let mut data = JumpTableData::with_capacity(depths.len());
             if jump_args_count == 0 {
                 // No jump arguments
-                for (depth, _) in depths.iter() {
+                for depth in depths.iter() {
                     let block = {
                         let i = state.control_stack.len() - 1 - (*depth as usize);
                         let frame = &mut state.control_stack[i];
@@ -539,7 +539,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                 let return_count = jump_args_count;
                 let mut dest_block_sequence = vec![];
                 let mut dest_block_map = HashMap::new();
-                for (depth, _) in depths.iter() {
+                for depth in depths.iter() {
                     let branch_block = match dest_block_map.entry(*depth as usize) {
                         hash_map::Entry::Occupied(entry) => *entry.get(),
                         hash_map::Entry::Vacant(entry) => {
@@ -608,7 +608,6 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         Operator::Try { .. }
         | Operator::Catch { .. }
         | Operator::Throw { .. }
-        | Operator::Unwind
         | Operator::Rethrow { .. }
         | Operator::Delegate { .. }
         | Operator::CatchAll => {
@@ -1967,7 +1966,24 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         | Operator::F64x2ConvertLowI32x4U
         | Operator::I32x4TruncSatF64x2SZero
         | Operator::I32x4TruncSatF64x2UZero
-        | Operator::I8x16Popcnt => {
+        | Operator::I8x16Popcnt
+        | Operator::I8x16RelaxedSwizzle
+        | Operator::I32x4RelaxedTruncSatF32x4S
+        | Operator::I32x4RelaxedTruncSatF32x4U
+        | Operator::I32x4RelaxedTruncSatF64x2SZero
+        | Operator::I32x4RelaxedTruncSatF64x2UZero
+        | Operator::F32x4Fma
+        | Operator::F32x4Fms
+        | Operator::F64x2Fma
+        | Operator::F64x2Fms
+        | Operator::I8x16LaneSelect
+        | Operator::I16x8LaneSelect
+        | Operator::I32x4LaneSelect
+        | Operator::I64x2LaneSelect
+        | Operator::F32x4RelaxedMin
+        | Operator::F32x4RelaxedMax
+        | Operator::F64x2RelaxedMin
+        | Operator::F64x2RelaxedMax => {
             return Err(wasm_unsupported!("proposed simd operator {:?}", op));
         }
         Operator::ReturnCall { .. } | Operator::ReturnCallIndirect { .. } => {
@@ -2206,7 +2222,7 @@ fn prepare_load<FE: FuncEnvironment + ?Sized>(
     let (base, offset) = get_heap_addr(
         heap,
         addr32,
-        memarg.offset,
+        memarg.offset as u32,
         loaded_bytes,
         environ.pointer_type(),
         builder,
@@ -2258,7 +2274,7 @@ fn translate_store<FE: FuncEnvironment + ?Sized>(
     let (base, offset) = get_heap_addr(
         heap,
         addr32,
-        memarg.offset,
+        memarg.offset as u32,
         mem_op_size(opcode, val_ty),
         environ.pointer_type(),
         builder,
@@ -2300,7 +2316,7 @@ fn fold_atomic_mem_addr(
         let linear_mem_addr = builder.ins().uextend(I64, linear_mem_addr);
         let a = builder
             .ins()
-            .iadd_imm(linear_mem_addr, i64::from(memarg.offset));
+            .iadd_imm(linear_mem_addr, memarg.offset as i64);
         let cflags = builder.ins().ifcmp_imm(a, 0x1_0000_0000i64);
         builder.ins().trapif(
             IntCC::UnsignedGreaterThanOrEqual,
@@ -2338,7 +2354,7 @@ fn finalise_atomic_mem_addr<FE: FuncEnvironment + ?Sized>(
     let access_ty_bytes = access_ty.bytes();
     let final_lma = builder
         .ins()
-        .iadd_imm(linear_mem_addr, i64::from(memarg.offset));
+        .iadd_imm(linear_mem_addr, memarg.offset as i64);
     if access_ty_bytes != 1 {
         assert!(access_ty_bytes == 2 || access_ty_bytes == 4 || access_ty_bytes == 8);
         let final_lma_misalignment = builder
