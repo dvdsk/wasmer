@@ -101,11 +101,11 @@ pub trait Compiler: Send + MemoryUsage {
             exceptions: features.exceptions,
             deterministic_only: false,
             // TODO: These are new, how should I handle them?
-            extended_const: false,
-            mutable_global: false,
-            relaxed_simd: false,
-            saturating_float_to_int: false,
-            sign_extension: false,
+            extended_const: features.extended_const,
+            relaxed_simd: features.relaxed_simd,
+            mutable_global: true,
+            saturating_float_to_int: true,
+            sign_extension: true,
         };
         validator.wasm_features(wasm_features);
         validator
