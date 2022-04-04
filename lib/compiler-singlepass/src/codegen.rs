@@ -3873,13 +3873,13 @@ impl<'a, M: Machine> FuncGen<'a, M> {
                 self.machine.emit_label(after);
             }
             Operator::BrTable { ref table } => {
-                let mut targets = table
+                let targets = table
                     .targets()
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(|e| CodegenError {
                         message: format!("BrTable read_table: {:?}", e),
                     })?;
-                let default_target = targets.pop().unwrap();
+                let default_target = table.default();
                 let cond = self.pop_value_released();
                 let table_label = self.machine.get_label();
                 let mut table: Vec<Label> = vec![];

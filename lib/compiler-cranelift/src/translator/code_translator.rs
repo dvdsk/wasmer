@@ -253,7 +253,13 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         }
         Operator::Select => {
             // we can ignore metadata because extern ref must use TypedSelect
-            let ((arg1, _), (arg2, _), (cond, _)) = state.pop3();
+            let ((mut arg1, _), (mut arg2, _), (cond, _)) = state.pop3();
+            if builder.func.dfg.value_type(arg1).is_vector() {
+                arg1 = optionally_bitcast_vector(arg1, I8X16, builder);
+            }
+            if builder.func.dfg.value_type(arg2).is_vector() {
+                arg2 = optionally_bitcast_vector(arg2, I8X16, builder);
+            }
             state.push1(builder.ins().select(cond, arg1, arg2));
         }
         Operator::TypedSelect { ty } => {
@@ -495,12 +501,12 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         }
         Operator::BrIf { relative_depth } => translate_br_if(*relative_depth, builder, state),
         Operator::BrTable { table } => {
-            let mut depths = table.targets().collect::<Result<Vec<_>, _>>()?;
-            let default = depths.pop().unwrap();
+            let default = table.default();
             let mut min_depth = default;
-            for depth in depths.iter() {
-                if *depth < min_depth {
-                    min_depth = *depth;
+            for depth in table.targets() {
+                let depth = depth?;
+                if depth < min_depth {
+                    min_depth = depth;
                 }
             }
             let jump_args_count = {
@@ -513,12 +519,13 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                 }
             };
             let (val, _) = state.pop1();
-            let mut data = JumpTableData::with_capacity(depths.len());
+            let mut data = JumpTableData::with_capacity(table.len() as usize);
             if jump_args_count == 0 {
                 // No jump arguments
-                for depth in depths.iter() {
+                for depth in table.targets() {
+                    let depth = depth?;
                     let block = {
-                        let i = state.control_stack.len() - 1 - (*depth as usize);
+                        let i = state.control_stack.len() - 1 - (depth as usize);
                         let frame = &mut state.control_stack[i];
                         frame.set_branched_to_exit();
                         frame.br_destination()
@@ -539,12 +546,13 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                 let return_count = jump_args_count;
                 let mut dest_block_sequence = vec![];
                 let mut dest_block_map = HashMap::new();
-                for depth in depths.iter() {
-                    let branch_block = match dest_block_map.entry(*depth as usize) {
+                for depth in table.targets() {
+                    let depth = depth?;
+                    let branch_block = match dest_block_map.entry(depth as usize) {
                         hash_map::Entry::Occupied(entry) => *entry.get(),
                         hash_map::Entry::Vacant(entry) => {
                             let block = builder.create_block();
-                            dest_block_sequence.push((*depth as usize, block));
+                            dest_block_sequence.push((depth as usize, block));
                             *entry.insert(block)
                         }
                     };
