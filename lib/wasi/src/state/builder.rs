@@ -1,6 +1,6 @@
 //! Builder system for configuring a [`WasiState`] and creating it.
 
-use crate::state::{default_fs_backing, WasiFs, WasiState};
+use crate::state::{default_fs_backing, WasiFs, WasiState, WasiNetwork};
 use crate::syscalls::types::{__WASI_STDERR_FILENO, __WASI_STDIN_FILENO, __WASI_STDOUT_FILENO};
 use crate::WasiEnv;
 use std::path::{Path, PathBuf};
@@ -434,6 +434,7 @@ impl WasiStateBuilder {
         }
 
         Ok(WasiState {
+            net: WasiNetwork::default(),
             fs: wasi_fs,
             args: self.args.clone(),
             envs: self

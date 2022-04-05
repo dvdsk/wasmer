@@ -10,6 +10,7 @@ pub type __wasi_fd_t = u32;
 pub const __WASI_STDIN_FILENO: u32 = 0;
 pub const __WASI_STDOUT_FILENO: u32 = 1;
 pub const __WASI_STDERR_FILENO: u32 = 2;
+pub const __WASI_TEST_SOCKET: u32 = 49827;
 
 pub type __wasi_fdflags_t = u16;
 pub const __WASI_FDFLAG_APPEND: u16 = 1 << 0;

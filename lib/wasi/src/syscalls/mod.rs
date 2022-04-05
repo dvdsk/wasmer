@@ -26,7 +26,7 @@ use crate::{
         virtual_file_type_to_wasi_file_type, Fd, Inode, InodeVal, Kind, PollEvent,
         PollEventBuilder, WasiState, MAX_SYMLINKS,
     },
-    WasiEnv, WasiError,
+    WasiEnv, WasiError, ALL_RIGHTS,
 };
 use std::borrow::Borrow;
 use std::convert::{Infallible, TryInto};
@@ -446,14 +446,35 @@ pub fn fd_fdstat_get(
         fd,
         buf_ptr.offset()
     );
+
+    use std::net::TcpListener;
+    use std::os::unix::io::AsRawFd;
     let (memory, mut state) = env.get_memory_and_wasi_state(0);
-    let fd_entry = wasi_try!(state.fs.get_fd(fd));
 
-    let stat = wasi_try!(state.fs.fdstat(fd));
+    // inject socket
+    let stat = if fd == __WASI_TEST_SOCKET {
+        // TODO get addr in from some env/cmd line argument
+        // TODO do this somewhere else where it makes sense after 
+        // parsing some argument possibly --tcplisten
+        let listener = TcpListener::bind("127.0.0.1:9000").unwrap(); 
+        let fd = listener.as_raw_fd();
+        state.net.fd = __WASI_TEST_SOCKET;
+        state.net.raw_fd = Some(fd);
+        __wasi_fdstat_t {
+            fs_filetype: __WASI_FILETYPE_SOCKET_STREAM,
+            fs_flags: 0,
+            // TODO: fix this
+            fs_rights_base: ALL_RIGHTS,
+            fs_rights_inheriting: ALL_RIGHTS,
+        }
+    } else {
+        let fd_entry = wasi_try!(state.fs.get_fd(fd));
+        let stat = wasi_try!(state.fs.fdstat(fd));
+        stat
+    };
+
     let buf = wasi_try!(buf_ptr.deref(memory));
-
     buf.set(stat);
-
     __WASI_ESUCCESS
 }
 
@@ -471,6 +492,31 @@ pub fn fd_fdstat_set_flags(
 ) -> __wasi_errno_t {
     debug!("wasi::fd_fdstat_set_flags");
     let (memory, mut state) = env.get_memory_and_wasi_state(0);
+
+    if fd == __WASI_TEST_SOCKET {
+        if flags & __WASI_FDFLAG_APPEND == __WASI_FDFLAG_APPEND {
+            dbg!("append");
+        }
+        if flags & __WASI_FDFLAG_APPEND == __WASI_FDFLAG_APPEND {
+            dbg!("append");
+        }
+        if flags & __WASI_FDFLAG_DSYNC == __WASI_FDFLAG_DSYNC {
+            dbg!("dsync");
+        }
+        if flags & __WASI_FDFLAG_NONBLOCK == __WASI_FDFLAG_NONBLOCK {
+            dbg!("nonblock");
+        }
+        if flags & __WASI_FDFLAG_RSYNC == __WASI_FDFLAG_RSYNC {
+            dbg!("rsync");
+        }
+        if flags & __WASI_FDFLAG_SYNC == __WASI_FDFLAG_SYNC {
+            dbg!("sync");
+        }
+        // TODO actually set the flags
+        state.net.flags = flags;
+        return __WASI_ESUCCESS
+    }
+
     let fd_entry = wasi_try!(state.fs.fd_map.get_mut(&fd).ok_or(__WASI_EBADF));
 
     if !has_rights(fd_entry.rights, __WASI_RIGHT_FD_FDSTAT_SET_FLAGS) {
@@ -2406,6 +2452,11 @@ pub fn poll_oneoff(
                     wasi_try!(state.fs.stdout().map_err(fs_error_into_wasi_err)).as_ref(),
                     __WASI_EBADF
                 )
+                .as_ref(),// Below is wrong, just put there to compile
+                __WASI_TEST_SOCKET => wasi_try!(
+                    wasi_try!(state.fs.stdout().map_err(fs_error_into_wasi_err)).as_ref(),
+                    __WASI_EBADF
+                )
                 .as_ref(),
                 _ => {
                     let fd_entry = wasi_try!(state.fs.get_fd(fd));
@@ -2577,6 +2628,17 @@ pub fn sock_recv(
     debug!("wasi::sock_recv");
     unimplemented!("wasi::sock_recv")
 }
+
+pub fn sock_accept(
+    env: &WasiEnv,
+    sock: __wasi_fd_t,
+    si_flags: __wasi_siflags_t,
+    ro_sock: __wasi_fd_t,
+) -> __wasi_errno_t {
+    debug!("wasi::sock_accept");
+    unimplemented!("wasi::sock_accept")
+}
+
 pub fn sock_send(
     env: &WasiEnv,
     sock: __wasi_fd_t,
