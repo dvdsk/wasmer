@@ -24,11 +24,11 @@ use crate::{
     state::{
         self, fs_error_into_wasi_err, iterate_poll_events, poll,
         virtual_file_type_to_wasi_file_type, Fd, Inode, InodeVal, Kind, PollEvent,
-        PollEventBuilder, WasiState, MAX_SYMLINKS,
+        PollEventBuilder, WasiState, MAX_SYMLINKS, WasiNetwork,
     },
     WasiEnv, WasiError, ALL_RIGHTS,
 };
-use std::borrow::Borrow;
+use std::{borrow::Borrow, os::unix::prelude::{AsRawFd, FromRawFd}};
 use std::convert::{Infallible, TryInto};
 use std::io::{self, Read, Seek, Write};
 use tracing::{debug, trace};
@@ -456,10 +456,10 @@ pub fn fd_fdstat_get(
         // TODO get addr in from some env/cmd line argument
         // TODO do this somewhere else where it makes sense after 
         // parsing some argument possibly --tcplisten
-        let listener = TcpListener::bind("127.0.0.1:9000").unwrap(); 
-        let fd = listener.as_raw_fd();
-        state.net.fd = __WASI_TEST_SOCKET;
-        state.net.listener = Some(fd);
+        if state.net.listener.is_none() {
+            let listener = TcpListener::bind("127.0.0.1:9000").unwrap(); 
+            state.net.listener = Some(listener);
+        };
         __wasi_fdstat_t {
             fs_filetype: __WASI_FILETYPE_SOCKET_STREAM,
             fs_flags: 0,
@@ -501,7 +501,7 @@ pub fn fd_fdstat_set_flags(
             unimplemented!("set dsync");
         }
         if flags & __WASI_FDFLAG_NONBLOCK == __WASI_FDFLAG_NONBLOCK {
-            state.net.listener.unwrap().set_nonblocking(true).unwrap();
+            state.net.listener.as_ref().unwrap().set_nonblocking(true).unwrap();
         }
         if flags & __WASI_FDFLAG_RSYNC == __WASI_FDFLAG_RSYNC {
             unimplemented!("set rsync");
@@ -2352,6 +2352,26 @@ pub fn path_unlink_file(
     __WASI_ESUCCESS
 }
 
+pub fn handle_sock_read(net: &mut WasiNetwork) -> __wasi_event_t {
+    let fd = net.listener.as_ref().unwrap().as_raw_fd();
+    let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+    let mut buf = [0u8; 1024];
+    let bytes_available = file.read(&mut buf).unwrap();
+    return __wasi_event_t {
+        userdata: 0,
+        error: __WASI_ESUCCESS,
+        type_: __WASI_EVENTTYPE_FD_READ,
+        u: unsafe {
+            __wasi_event_u {
+                fd_readwrite: __wasi_event_fd_readwrite_t {
+                    nbytes: bytes_available as u64,
+                    flags: 0,
+                },
+            }
+        },
+    };
+}
+
 /// ### `poll_oneoff()`
 /// Concurrently poll for a set of events
 /// Inputs:
@@ -2391,10 +2411,17 @@ pub fn poll_oneoff(
         let mut peb = PollEventBuilder::new();
         let mut ns_to_sleep = 0;
 
+        dbg!(&s.event_type);
         let fd = match s.event_type {
             EventType::Read(__wasi_subscription_fs_readwrite_t { fd }) => {
                 match fd {
                     __WASI_STDIN_FILENO | __WASI_STDOUT_FILENO | __WASI_STDERR_FILENO => (),
+                    __WASI_TEST_SOCKET => {
+                        let event = handle_sock_read(&mut state.net);
+                        event_array[0].set(event);
+                        out_ptr.set(events_seen as u32);
+                        return __WASI_ESUCCESS;
+                    }
                     _ => {
                         let fd_entry = wasi_try!(state.fs.get_fd(fd));
                         if !has_rights(fd_entry.rights, __WASI_RIGHT_FD_READ) {
@@ -2448,12 +2475,8 @@ pub fn poll_oneoff(
                     wasi_try!(state.fs.stdout().map_err(fs_error_into_wasi_err)).as_ref(),
                     __WASI_EBADF
                 )
-                .as_ref(),// Below is wrong, just put there to compile
-                __WASI_TEST_SOCKET => wasi_try!(
-                    wasi_try!(state.fs.stdout().map_err(fs_error_into_wasi_err)).as_ref(),
-                    __WASI_EBADF
-                )
                 .as_ref(),
+                __WASI_TEST_SOCKET => unreachable!(),
                 _ => {
                     let fd_entry = wasi_try!(state.fs.get_fd(fd));
                     let inode = fd_entry.inode;

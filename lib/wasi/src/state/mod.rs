@@ -1565,7 +1565,6 @@ pub struct WasiNetwork { // TODO support multiple sockets
     pub fd: u32,
     // os file discriptor
     pub listener: Option<TcpListener>,
-    pub flags: __wasi_fdflags_t,
 }
 
 impl Default for WasiNetwork {
@@ -1573,7 +1572,6 @@ impl Default for WasiNetwork {
         WasiNetwork {
             fd: __WASI_TEST_SOCKET,
             listener: None,
-            flags: 0,
         }
     }
 }
