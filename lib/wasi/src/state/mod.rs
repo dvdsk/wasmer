@@ -26,6 +26,7 @@ pub use generational_arena::Index as Inode;
 #[cfg(feature = "enable-serde")]
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::net::TcpListener;
 use std::os::unix::prelude::RawFd;
 use std::{
     borrow::Borrow,
@@ -1563,7 +1564,7 @@ pub struct WasiNetwork { // TODO support multiple sockets
     // wasmer file discriptor
     pub fd: u32,
     // os file discriptor
-    pub raw_fd: Option<RawFd>,
+    pub listener: Option<TcpListener>,
     pub flags: __wasi_fdflags_t,
 }
 
@@ -1571,7 +1572,7 @@ impl Default for WasiNetwork {
     fn default() -> Self {
         WasiNetwork {
             fd: __WASI_TEST_SOCKET,
-            raw_fd: None,
+            listener: None,
             flags: 0,
         }
     }

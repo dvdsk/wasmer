@@ -459,7 +459,7 @@ pub fn fd_fdstat_get(
         let listener = TcpListener::bind("127.0.0.1:9000").unwrap(); 
         let fd = listener.as_raw_fd();
         state.net.fd = __WASI_TEST_SOCKET;
-        state.net.raw_fd = Some(fd);
+        state.net.listener = Some(fd);
         __wasi_fdstat_t {
             fs_filetype: __WASI_FILETYPE_SOCKET_STREAM,
             fs_flags: 0,
@@ -495,25 +495,21 @@ pub fn fd_fdstat_set_flags(
 
     if fd == __WASI_TEST_SOCKET {
         if flags & __WASI_FDFLAG_APPEND == __WASI_FDFLAG_APPEND {
-            dbg!("append");
-        }
-        if flags & __WASI_FDFLAG_APPEND == __WASI_FDFLAG_APPEND {
-            dbg!("append");
+            unimplemented!("set append");
         }
         if flags & __WASI_FDFLAG_DSYNC == __WASI_FDFLAG_DSYNC {
-            dbg!("dsync");
+            unimplemented!("set dsync");
         }
         if flags & __WASI_FDFLAG_NONBLOCK == __WASI_FDFLAG_NONBLOCK {
-            dbg!("nonblock");
+            state.net.listener.unwrap().set_nonblocking(true).unwrap();
         }
         if flags & __WASI_FDFLAG_RSYNC == __WASI_FDFLAG_RSYNC {
-            dbg!("rsync");
+            unimplemented!("set rsync");
         }
         if flags & __WASI_FDFLAG_SYNC == __WASI_FDFLAG_SYNC {
-            dbg!("sync");
+            unimplemented!("set sync");
         }
-        // TODO actually set the flags
-        state.net.flags = flags;
+        // TODO set all flags as needed
         return __WASI_ESUCCESS
     }
 
